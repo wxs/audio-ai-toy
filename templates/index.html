@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<style>
+button {
+  font-size: 21pt;
+  padding: 10px;
+}
+
+</style>
+<h1>AI audio processing</h1>
+
+
+<p>In this workshop we're going to try using some neural networks created by
+  various research organizations for working with music.
+
+
+
+
+<div id="step-1">
+  <h2>Step 1</h2>
+  <p>First record 3 seconds of audio by pressing the button below</p>
+  <button id="start-record">Record Audio</button>
+</div>
+
+<div id="step-2" style="display: none;">
+  <p>Audio recorded! Listen to it below:
+  <p><audio id="player" controls></audio>
+
+  <h2>Step 2</h2>
+
+  <p>If you don't like the audio, go back try another recording. Otherwise,
+    let's feed it to our first neural network!
+
+  <p> Here we will use a network called
+    <a href='https://github.com/marl/crepe'>CREPE</a> from NYU. This neural
+    network from 2018 is state of the art for pitch estimation. Its input
+    is an audio recording, and its output is a pitch estimate every 10 milliseconds.</p>
+
+  <p><button id='send-to-crepe'>Send to CREPE</button>
+
+</div>
+
+<div id="step-3" style="display: none;">
+  <p>Pitch Estimation Complete!
+  <div id="pitchgraph"></div>
+
+  <h3>Step 3</h3>
+  <p>Next we'll take the <strong>output</strong> of the above neural network (i.e.
+    the pitch information) and feed it as the <strong>input</strong> to another neural network,
+    that has learned to generate musical instrument sounds from pitch. This
+    neural network is part of the <a href='https://magenta.tensorflow.org/ddsp'>
+    DDSP</a> project from the Google Magenta team.
+
+    <p><button id='send-to-ddsp'>Send to Timbre Transfer neural network</button>
+
+</div>
+
+<div id="step-4" style="display: none">
+  <p>Timbre Transfer complete!
+  <p><audio id="player-ddsp" controls></audio>
+  <p><a id="download-ddsp">Download</a>
+
+
+</div>
+
+
+<script src="static/WavAudioEncoder.min.js"></script>
+<script src="static/jquery-3.6.0.min.js"></script>
+<script src="static/dygraph.js"></script>
+<script>
+const CLIP_LENGTH = 3000;
+const player = document.getElementById('player');
+//const downloadButton = document.getElementById('download')
+
+
+let state = {
+  'recording': false,
+  'uploading': false,
+  'recordedAudio': null,
+  'crepeData': null
+}
+
+const updateState = function(newValues) {
+  Object.entries(newValues).forEach(([k,v]) => {
+    state[k] = v;
+  });
+  renderPage();
+};
+
+function renderPage() {
+  if (state.recording) {
+    $("#start-record").prop('disabled', true);
+    $("#start-record").text('Recording...');
+  } else {
+    $("#start-record").prop('disabled', false);
+    $("#start-record").text('Start Recording');
+  }
+
+  if (state.recordedAudio != null) {
+    $("#step-2").show();
+  } else {
+    $("#step-2").hide();
+  }
+
+  if (state.uploading) {
+    $("#send-to-crepe").prop('disabled', true);
+    $("#send-to-crepe").text("Processing with CREPE neural network...")
+  } else {
+    $("#send-to-crepe").prop('disabled', false);
+    $("#send-to-crepe").text("Send to CREPE neural network...")
+  }
+
+  if (state.crepeData) {
+    $("#step-3").show();
+  } else {
+    $("#step-3").hide();
+  }
+
+  if (state.ddspUploading) {
+    $("#send-to-ddsp").prop('disabled', true);
+    $("#send-to-ddsp").text("Processing with Timbre Transfer neural network")
+  } else {
+    $("#send-to-ddsp").prop('disabled', false);
+    $("#send-to-ddsp").text("Send to Timbre Transfer neural network");
+  }
+
+  if (state.ddspData) {
+    $("#step-4").show();
+  } else {
+    $("#step-4").hide();
+  }
+};
+
+function plotCREPEData(crepeData) {
+  let g = new Dygraph(
+    $("#pitchgraph")[0],
+    crepeData.f0_hz.map((element, index) => {return [index, element]}),
+    {
+      labels: ['Time (ms)', 'Frequency (Hz)']
+    }
+  );
+}
+
+$("#start-record").on('click', function() {
+  updateState({"recording": true, "recordedAudio": null});
+  navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      .then(function(stream) {
+        const context = new AudioContext();
+        const source = context.createMediaStreamSource(stream);
+        const processor = context.createScriptProcessor(1024, 1, 1);
+        const encoder = new WavAudioEncoder(44100, 1);
+
+        source.connect(processor);
+        processor.connect(context.destination);
+
+        processor.onaudioprocess = function(e) {
+          encoder.encode([e.inputBuffer.getChannelData(0)]);
+        };
+
+        setTimeout(function() {
+          processor.disconnect();
+          source.disconnect();
+          let blob = encoder.finish();
+          const blobURL = URL.createObjectURL(blob);
+          player.src = blobURL;
+          updateState({'recording': false, 'recordedAudio': blob});
+        }, CLIP_LENGTH);
+      });
+});
+
+$("#send-to-crepe").on('click', function() {
+   let fd = new FormData();
+   fd.append('audio', state.recordedAudio)
+   $.ajax({
+     url: '/crepe',
+     data: fd,
+     processData: false,
+     contentType: false,
+     type: 'POST',
+     success: function(data) {
+       updateState({'uploading': false, 'crepeData': data});
+       // This has to happen after updateState because
+       // dygraph seems to have trouble plotting to a hidden
+       // element...
+       plotCREPEData(data);
+     }
+   });
+   updateState({'uploading': true})
+});
+
+$("#send-to-ddsp").on('click', function() {
+   $.ajax({
+     type: 'POST',
+     url: '/violin',
+     contentType: "application/json",
+     data: JSON.stringify(state.crepeData),
+     xhr:function() {
+          var xhr = new XMLHttpRequest();
+          xhr.responseType= 'blob'
+          return xhr;
+      },
+     success: function(data) {
+       updateState({'ddspUploading': false, 'ddspData': data});
+       //let blob = new Blob([data], {type: "audio/wav"});
+       const blobURL = URL.createObjectURL(data);
+       $("#player-ddsp").prop('src',blobURL);
+       $("#download-ddsp").prop('href',blobURL);
+     },
+     error: function(jqxhr, textStatus, errorThrown) {
+       console.log("ERROR IN VIOLIN POST");
+       console.log(jqxhr, textStatus, errorThrown);
+     }
+
+   });
+   updateState({'ddspUploading': true, 'ddspData': null})
+});
+
+</script>
+
+</html>
