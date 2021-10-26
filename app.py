@@ -30,6 +30,7 @@ def extract_features():
     #f.save('uploaded.wav')
     features = audioai.process_audio(f)
     result = {
+        'mask_on': features['mask_on'].tolist(),
         'n_samples': features['n_samples'],
         'f0_hz': features['f0_hz'].tolist(),
         'f0_confidence': features['f0_confidence'].tolist(),

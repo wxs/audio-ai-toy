@@ -24,6 +24,13 @@ def process_audio(file):
     ddsp.spectral_ops.reset_crepe()
     audio_features = ddsp.training.metrics.compute_audio_features(audio)
     audio_features['n_samples'] = audio.shape[0]
+
+    # We compute the mask here for good measure when we plot elsewhere
+    mask_on, note_on_value = detect_notes(audio_features['loudness_db'],
+                                        audio_features['f0_confidence'],
+                                        1.0)
+    audio_features['mask_on'] = mask_on
+
     return audio_features
 
 def load_wav(file):
