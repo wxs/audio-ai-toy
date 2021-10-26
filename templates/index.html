@@ -1,66 +1,81 @@
-<!DOCTYPE html>
-<html>
-<style>
-button {
-  font-size: 21pt;
-  padding: 10px;
-}
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link rel="stylesheet" href="static/css/bootstrap.min.css">
+    <style>
+    button {
+      font-size: 21pt;
+      padding: 10px;
+    }
 
-</style>
-<h1>AI audio processing</h1>
+    #top-container {
+      border: 1px solid black;
+      padding: 5px;
+    }
+    </style>
+  </head>
 
-
-<p>In this workshop we're going to try using some neural networks created by
-  various research organizations for working with music.
-
-
-
-
-<div id="step-1">
-  <h2>Step 1</h2>
-  <p>First record 3 seconds of audio by pressing the button below</p>
-  <button id="start-record">Record Audio</button>
-</div>
-
-<div id="step-2" style="display: none;">
-  <p>Audio recorded! Listen to it below:
-  <p><audio id="player" controls></audio>
-
-  <h2>Step 2</h2>
-
-  <p>If you don't like the audio, go back try another recording. Otherwise,
-    let's feed it to our first neural network!
-
-  <p> Here we will use a network called
-    <a href='https://github.com/marl/crepe'>CREPE</a> from NYU. This neural
-    network from 2018 is state of the art for pitch estimation. Its input
-    is an audio recording, and its output is a pitch estimate every 10 milliseconds.</p>
-
-  <p><button id='send-to-crepe'>Send to CREPE</button>
-
-</div>
-
-<div id="step-3" style="display: none;">
-  <p>Pitch Estimation Complete!
-  <div id="pitchgraph"></div>
-
-  <h3>Step 3</h3>
-  <p>Next we'll take the <strong>output</strong> of the above neural network (i.e.
-    the pitch information) and feed it as the <strong>input</strong> to another neural network,
-    that has learned to generate musical instrument sounds from pitch. This
-    neural network is part of the <a href='https://magenta.tensorflow.org/ddsp'>
-    DDSP</a> project from the Google Magenta team.
-
-    <p><button id='send-to-ddsp'>Send to Timbre Transfer neural network</button>
-
-</div>
-
-<div id="step-4" style="display: none">
-  <p>Timbre Transfer complete!
-  <p><audio id="player-ddsp" controls></audio>
-  <p><a id="download-ddsp">Download</a>
+  <div class="container">
+    <div class="row">
+      <div class="col-md-12">
+  <h1>AI audio processing</h1>
 
 
+  <p>In this workshop we're going to try using some neural networks created by
+    various research organizations for working with music.
+
+
+  <div id="top-container">
+
+  <div id="step1">
+    <h2>Step 1: Record Your Voice</h2>
+    <p>Click the microphone to record a few seconds of audio. Sing a song!
+    <!--<button id="start-record">Record Audio</button>-->
+  </div>
+
+  <div id="step2">
+    <h2>Step 2: Pitch Estimation with CREPE</h2>
+    <p>Listen to the output audio below! If you don't like it, click the microphone
+      to try again. Otherwise, let's feed it to our first neural network!
+
+    <p> Here we will use a network called
+      <a href='https://github.com/marl/crepe'>CREPE</a> from NYU. This neural
+      network from 2018 is state of the art for pitch estimation.
+    <p>Click on the CREPE box below to estimate pitch
+  </div>
+
+  <div id="step3">
+    <h2>Step 3: Violin Synthesis with DDSP</h2>
+    <p>Next we'll take the <strong>output</strong> of CREPE (i.e.
+      the pitch information) and feed it as the <strong>input</strong> to another neural network,
+      that has learned to generate musical instrument sounds from pitch. This
+      neural network is part of the <a href='https://magenta.tensorflow.org/ddsp'>
+      DDSP</a> project from the Google Magenta team.
+  </div>
+
+  </div>
+
+  <div id="middle-container">
+    <object type="image/svg+xml" data="static/flowchart.svg" style="width:100%" id="flowchart"></object>
+  </div>
+  <div id="bottom-container" class="row">
+    <div id="step1-out" class="col-sm-4" style="display:none;">
+      <h3>Recorded Audio</h3>
+      <audio id="player" controls></audio>
+      <p><a id="download-input" download="input_audio.wav">Download</a>
+    </div>
+    <div id="step2-out" class="col-sm-4" style="display: none;">
+      <h3>Estimated Pitch</h3>
+      <div id="pitchgraph" style="width:100%; height: 200px;"></div>
+    </div>
+    <div id="step3-out" class="col-sm-4" style="display: none;">
+      <h3>Generated Violin</h3>
+      <p><audio id="player-ddsp" controls></audio>
+      <p><a id="download-ddsp" download="violin_audio.wav">Download</a>
+    </div>
+  </div>
 </div>
 
 
@@ -68,68 +83,13 @@ button {
 <script src="static/jquery-3.6.0.min.js"></script>
 <script src="static/dygraph.js"></script>
 <script>
-const CLIP_LENGTH = 3000;
+const CLIP_LENGTH = 4000;
 const player = document.getElementById('player');
 //const downloadButton = document.getElementById('download')
+let f = null; // flowchart
 
 
-let state = {
-  'recording': false,
-  'uploading': false,
-  'recordedAudio': null,
-  'crepeData': null
-}
-
-const updateState = function(newValues) {
-  Object.entries(newValues).forEach(([k,v]) => {
-    state[k] = v;
-  });
-  renderPage();
-};
-
-function renderPage() {
-  if (state.recording) {
-    $("#start-record").prop('disabled', true);
-    $("#start-record").text('Recording...');
-  } else {
-    $("#start-record").prop('disabled', false);
-    $("#start-record").text('Start Recording');
-  }
-
-  if (state.recordedAudio != null) {
-    $("#step-2").show();
-  } else {
-    $("#step-2").hide();
-  }
-
-  if (state.uploading) {
-    $("#send-to-crepe").prop('disabled', true);
-    $("#send-to-crepe").text("Processing with CREPE neural network...")
-  } else {
-    $("#send-to-crepe").prop('disabled', false);
-    $("#send-to-crepe").text("Send to CREPE neural network...")
-  }
-
-  if (state.crepeData) {
-    $("#step-3").show();
-  } else {
-    $("#step-3").hide();
-  }
-
-  if (state.ddspUploading) {
-    $("#send-to-ddsp").prop('disabled', true);
-    $("#send-to-ddsp").text("Processing with Timbre Transfer neural network")
-  } else {
-    $("#send-to-ddsp").prop('disabled', false);
-    $("#send-to-ddsp").text("Send to Timbre Transfer neural network");
-  }
-
-  if (state.ddspData) {
-    $("#step-4").show();
-  } else {
-    $("#step-4").hide();
-  }
-};
+let recordedAudio, crepeData, ddspData;
 
 function plotCREPEData(crepeData) {
   let g = new Dygraph(
@@ -141,10 +101,10 @@ function plotCREPEData(crepeData) {
   );
 }
 
-$("#start-record").on('click', function() {
-  updateState({"recording": true, "recordedAudio": null});
+function startRecord() {
   navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       .then(function(stream) {
+        startRecordAnimation();
         const context = new AudioContext();
         const source = context.createMediaStreamSource(stream);
         const processor = context.createScriptProcessor(1024, 1, 1);
@@ -158,62 +118,204 @@ $("#start-record").on('click', function() {
         };
 
         setTimeout(function() {
+          stopRecordAnimation();
+          stream.getTracks().forEach(function(track) {
+          if (track.readyState == 'live') {
+                  track.stop();
+              }
+          });
           processor.disconnect();
           source.disconnect();
           let blob = encoder.finish();
           const blobURL = URL.createObjectURL(blob);
           player.src = blobURL;
-          updateState({'recording': false, 'recordedAudio': blob});
+          $("#download-input").prop('href',blobURL);
+          recordedAudio = blob;
+          $("#step1-out").show();
+          renderStep2();
         }, CLIP_LENGTH);
       });
-});
+}
 
-$("#send-to-crepe").on('click', function() {
-   let fd = new FormData();
-   fd.append('audio', state.recordedAudio)
-   $.ajax({
-     url: '/crepe',
-     data: fd,
-     processData: false,
-     contentType: false,
-     type: 'POST',
-     success: function(data) {
-       updateState({'uploading': false, 'crepeData': data});
-       // This has to happen after updateState because
-       // dygraph seems to have trouble plotting to a hidden
-       // element...
-       plotCREPEData(data);
-     }
-   });
-   updateState({'uploading': true})
-});
+function sendToCrepe() {
+  if (!recordedAudio) {
+    return;
+  }
+  let fd = new FormData();
+  fd.append('audio', recordedAudio)
+  $.ajax({
+    url: '/crepe',
+    data: fd,
+    processData: false,
+    contentType: false,
+    type: 'POST',
+    success: function(data) {
+      stopCrepeAnimation();
+      crepeData = data;
+      $("#step2-out").show();
+      renderStep3();
+      // Needs to happen *after* showing step 2 out because dygraph has trouble
+      // otherwise
+      plotCREPEData(data);
+    },
+    error: function(jqxhr, textStatus, errorThrown) {
+      console.log("ERROR IN CREPE POST");
+      console.log(jqxhr, textStatus, errorThrown);
+      stopCrepeAnimation();
+    }
+  });
+  startCrepeAnimation();
+}
 
-$("#send-to-ddsp").on('click', function() {
-   $.ajax({
-     type: 'POST',
-     url: '/violin',
-     contentType: "application/json",
-     data: JSON.stringify(state.crepeData),
-     xhr:function() {
-          var xhr = new XMLHttpRequest();
-          xhr.responseType= 'blob'
-          return xhr;
-      },
-     success: function(data) {
-       updateState({'ddspUploading': false, 'ddspData': data});
-       //let blob = new Blob([data], {type: "audio/wav"});
-       const blobURL = URL.createObjectURL(data);
-       $("#player-ddsp").prop('src',blobURL);
-       $("#download-ddsp").prop('href',blobURL);
+function sendToDDSP() {
+  if (!crepeData) {
+    return;
+  }
+  startDDSPAnimation();
+  $.ajax({
+    type: 'POST',
+    url: '/violin',
+    contentType: "application/json",
+    data: JSON.stringify(crepeData),
+    xhr:function() {
+         var xhr = new XMLHttpRequest();
+         xhr.responseType= 'blob'
+         return xhr;
      },
-     error: function(jqxhr, textStatus, errorThrown) {
-       console.log("ERROR IN VIOLIN POST");
-       console.log(jqxhr, textStatus, errorThrown);
-     }
+    success: function(data) {
+      stopDDSPAnimation();
+      ddspData = data;
+      //let blob = new Blob([data], {type: "audio/wav"});
+      const blobURL = URL.createObjectURL(data);
+      $("#player-ddsp").prop('src',blobURL);
+      $("#download-ddsp").prop('href',blobURL);
+      $("#step3-out").show();
+    },
+    error: function(jqxhr, textStatus, errorThrown) {
+      console.log("ERROR IN VIOLIN POST");
+      console.log(jqxhr, textStatus, errorThrown);
+      stopDDSPAnimation();
+    }
 
-   });
-   updateState({'ddspUploading': true, 'ddspData': null})
+  });
+}
+
+function renderStep1() {
+  $("#step1").show();
+  $("#step2").hide();
+  $("#step3").hide();
+  $(f.querySelectorAll('#layer2, #layer2 .highlightable')).addClass("future");
+  $(f.querySelectorAll('#layer3, #layer3 .highlightable')).addClass("future");
+}
+function renderStep2() {
+  $("#step1").hide();
+  $("#step2").show();
+  $("#step3").hide();
+  $(f.querySelectorAll('#layer2, #layer2 .highlightable')).removeClass("future");
+  $(f.querySelectorAll('#layer3, #layer3 .highlightable')).addClass("future");
+}
+function renderStep3() {
+  $("#step1").hide();
+  $("#step2").hide();
+  $("#step3").show();
+  $(f.querySelectorAll('#layer2, #layer2 .highlightable')).removeClass("future");
+  $(f.querySelectorAll('#layer3, #layer3 .highlightable')).removeClass("future");
+}
+
+let recordAnimationId = null;
+let crepeAnimationId = null;
+let ddspAnimationId = null;
+let micElements;
+
+function rgbString(r,g,b) {
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+
+function startRecordAnimation() {
+  let start;
+  micElements = f.querySelectorAll('#microphone .highlightable');
+  $(micElements).addClass('animating');
+  function loop(timestamp) {
+    let interp = (Math.sin(timestamp/200.0)/2 + 0.5);
+    let r = 255 * interp + 237 * (1 - interp);
+    let g = 237 * (1 - interp);
+    let b = 237 * (1 - interp);
+    let fill = rgbString(r,g,b);
+    micElements.forEach((el) => {
+      el.style.fill = fill;
+    });
+    recordAnimationId = requestAnimationFrame(loop);
+  }
+  recordAnimationId = requestAnimationFrame(loop);
+}
+
+function stopRecordAnimation() {
+  micElements.forEach((el) => {
+    el.style.fill = "#ececec"
+  })
+  $(micElements).removeClass('animating');
+  cancelAnimationFrame(recordAnimationId);
+}
+
+
+function getRandomAnimator(elements, period) {
+  let nextChange = 0;
+  return function(timestamp) {
+    if (timestamp > nextChange) {
+      elements.forEach((el) => {
+        let r = Math.round(Math.random()*255);
+        let g = Math.round(Math.random()*255);
+        let b = Math.round(Math.random()*255);
+        el.style.fill = rgbString(r,g,b);
+      });
+      nextChange = timestamp + period;
+    }
+  };
+}
+function startCrepeAnimation() {
+  let anim = getRandomAnimator(f.querySelectorAll('#layer2 circle'), 100);
+  function loop(timestamp) {
+    anim(timestamp)
+    crepeAnimationId = requestAnimationFrame(loop);
+  }
+  crepeAnimationId = requestAnimationFrame(loop);
+}
+
+function stopCrepeAnimation() {
+  cancelAnimationFrame(crepeAnimationId);
+  f.querySelectorAll('#layer2 circle').forEach((el) => {
+    el.style.fill = "#000000";
+  });
+}
+
+function startDDSPAnimation() {
+  let anim = getRandomAnimator(f.querySelectorAll('#layer3 circle'), 100);
+  function loop(timestamp) {
+    anim(timestamp)
+    ddspAnimationId = requestAnimationFrame(loop);
+  }
+  ddspAnimationId = requestAnimationFrame(loop);
+}
+
+function stopDDSPAnimation() {
+  cancelAnimationFrame(ddspAnimationId);
+  f.querySelectorAll('#layer3 circle').forEach((el) => {
+    el.style.fill = "#000000";
+  });
+}
+
+$("#flowchart").on('load', function() {
+  f = this.contentDocument;
+  let step1 = f.getElementById('layer1');
+  let step2 = f.getElementById('layer2');
+  let step3 = f.getElementById('layer3');
+
+  step1.querySelectorAll('.highlightable').forEach((el) => {el.addEventListener('click', startRecord)});
+  step2.querySelectorAll('.highlightable').forEach((el) => {el.addEventListener('click', sendToCrepe)});
+  step3.querySelectorAll('.highlightable').forEach((el) => {el.addEventListener('click', sendToDDSP)});
+  renderStep1();
 });
+
 
 </script>
 

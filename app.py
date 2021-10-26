@@ -55,6 +55,6 @@ def generate_violin():
 
     response = make_response(buffer.getvalue())
     response.mimetype = 'audio/wav'
-    with open('testout.wav', 'wb') as f:
-        f.write(buffer.getvalue())
+    #with open('testout.wav', 'wb') as f:
+        #f.write(buffer.getvalue())
     return response
