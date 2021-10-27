@@ -1,0 +1,11 @@
+/* Add to SVG thus
+ * <?xml-stylesheet type="text/css" href="flowchart.css" ?>
+ */
+
+g.future {
+  opacity: 0.3;
+}
+.highlightable:not(.future):not(.animating):hover {
+  fill: red !important;
+  cursor: pointer;
+}
